@@ -40,8 +40,11 @@
             <div class="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-black/10">
                 <img src="favicon.svg" alt="cslid logo" class="w-full h-full object-cover">
             </div>
-            <div>
-                <span class="text-xl font-extrabold tracking-tight gradient-text">cslid.</span>
+            <div class="brand-copy">
+                <div class="brand-title">
+                    <span class="text-xl font-extrabold tracking-tight gradient-text">cslid.</span>
+                    <span class="beta-badge">BETA</span>
+                </div>
                 <span class="block text-[10px] uppercase tracking-widest text-indigo-400 font-semibold">Startup Launchpad & Match</span>
             </div>
         </div>
@@ -68,11 +71,11 @@
 
         <!-- Right User Profile CTA -->
         <div class="flex items-center space-x-3">
-            <button id="launch-center-nav" onclick="openLaunchCenter()" class="flex items-center space-x-2 px-4 py-2 rounded-xl bg-gray-800/80 border border-gray-700 text-white font-medium text-sm hover:border-indigo-500 transition">
+            <button id="launch-center-nav" onclick="openLaunchCenter()" aria-label="Open Launch Center" title="Launch Center" class="flex items-center space-x-2 px-4 py-2 rounded-xl bg-gray-800/80 border border-gray-700 text-white font-medium text-sm hover:border-indigo-500 transition">
                 <i class="fa-solid fa-rocket text-indigo-400 text-xs"></i>
                 <span>Launch Center</span>
             </button>
-            <button onclick="openPostModal()" class="flex items-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-medium text-sm hover:opacity-90 transition">
+            <button onclick="openPostModal()" aria-label="Post an update" title="Post Update" class="flex items-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-medium text-sm hover:opacity-90 transition">
                 <i class="fa-solid fa-plus text-xs"></i>
                 <span>Post Update</span>
             </button>
