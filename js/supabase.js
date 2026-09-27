@@ -132,7 +132,7 @@
             const { data, error } = await supabaseClient.auth.signUp({
                 email,
                 password,
-                options: { data: { name, role } }
+                options: { data: { name, role },emailRedirectTo: window.location.href }
             });
             if (error) throw error;
             return data;
