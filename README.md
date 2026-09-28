@@ -1,74 +1,55 @@
 # cslid.
 
-> **Status: Testing / Pre-release**
+> **Status: Beta**
 
-cslid. is a startup launchpad and founder-investor matching prototype. It is designed to help founders present their startups, discover potential investors or collaborators, share progress updates, and prepare fundraising material.
+cslid. is a startup launchpad and founder–investor matchmaker. Founders publish a startup profile and post progress updates; investors swipe through published startups, request connections, and message founders once a connection is accepted.
 
-This project is currently in testing. It is not yet ready for real users or production investment decisions.
+**Live app:** https://dynastik.github.io/cslid./
 
-## Current features
+## Features
 
-- Startup matching/swipe deck
-- Startup profile creation
-- Founder profile area
-- Startup directory
-- Journey/feed posts
-- Basic messaging interface
-- Launch Center with startup preparation tools
-- Template-based pitch text generator (not connected to an AI service)
+- Email/password auth via Supabase Auth (magic-link password reset, session persistence)
+- Founder and investor roles
+- Startup profile creation with public/private draft toggle
+- Investor swipe deck (Match Deck) sourced from published startups
+- Startup directory with sector filtering
+- Journey feed for founder progress updates
+- Connection requests → accept/reject → messaging (only after acceptance)
+- Blocking and reporting
+- Launch Center with an onboarding checklist and pitch-generation tool
+- Data export and account deletion (self-service)
 - Light and dark themes
-- Supabase client integration scaffold
+- Realtime updates for messages, connections, and matches (Supabase Realtime)
+
+## Architecture
+
+- **Frontend:** static HTML/CSS/JS, hosted on GitHub Pages. No build step.
+- **Backend:** Supabase (Postgres + Auth + Realtime), accessed directly from the browser using the public anon key. All access control is enforced server-side via Postgres Row Level Security (RLS) policies and `security definer` functions — see `supabase-schema.sql`.
+- **Client-side cache:** the app fetches data from Supabase and mirrors a filtered copy into `localStorage` purely so the UI can render instantly and survive refreshes. Supabase remains the source of truth; the cache is refreshed on load, every 15 seconds, and on realtime events.
 
 ## Repository structure
 
-```text
+```
 cslid/
 ├── index.html              # GitHub Pages entry point and page markup
-├── favicon.svg             # Website favicon
-├── README.md               # Project documentation
-├── supabase-schema.sql     # Database tables and policies
+├── favicon.svg              # Website favicon
+├── README.md                 # Project documentation
+├── supabase-schema.sql       # Database tables, RLS policies, triggers, RPC functions
 ├── css/
-│   └── styles.css          # Custom styles
+│   └── styles.css            # Custom styles
 └── js/
-    ├── app.js              # Application behavior and UI logic
-    └── supabase.js         # Supabase client and database helpers
+    ├── app.js                # Application behavior and UI logic
+    └── supabase.js            # Supabase client and database helper functions
 ```
 
-## Current testing status
 
-The current MVP includes:
+## Known limitations (beta)
 
-- Supabase email/password authentication, session restoration, logout, and password reset
-- Founder and investor roles with role-aware navigation
-- Role-specific workspaces: founders manage Launch Center and requests; investors discover startups in Match Deck
-- UUID-based identities and ownership-based RLS policies
-- Persistent startup profiles, journey posts, connection requests, matches, and messages
-- Connection lifecycle: pending request, founder accept/reject, and shared match creation
-- Central Connections screen for incoming, sent, and accepted connections
-- Messaging restricted to accepted connections
-- Conversation previews and local unread-message indicators for accepted connections
-- Automatic Supabase refresh while signed in, plus a manual Connections refresh button
-- Supabase Realtime updates for messages, connections, and matches
-- Persistent browser sessions with automatic token refresh
-- Founder startup drafts with explicit publish/unpublish control
-- Safer rendering of user-generated text and HTTPS validation for startup contact URLs
-- Basic safety controls: server-enforced connection/message limits, block/report actions, data export, and account deletion
-
-## Safety and account controls
-
-The `supabase-schema.sql` file is a **destructive full reset**: it deletes every Supabase Auth user and all cslid app data, then recreates the tables, policies, triggers, and RPC functions. Export anything you need first. After running it, create fresh test accounts. It enforces a maximum of 20 new connection requests per account per 24 hours and 100 messages per account per hour, in addition to browser-side feedback limits. Users can report or block a person from an open message thread. Blocking removes the connection and conversation and prevents new requests or messages in either direction.
-
-From **Profile**, a signed-in user can download a JSON export of their account data or permanently delete the account and associated application data. Account deletion is irreversible. Keep a backup of important data before testing it.
-
-Message delivery uses the authenticated `send_connection_message` RPC. The full-reset schema installs the correct message-only rate-limit trigger and RPC. After running it, deploy the updated `js/app.js` and `js/supabase.js`, then create fresh test accounts. The RPC derives the sender from `auth.uid()` and verifies the accepted connection and block state before inserting.
-
-## Remaining beta limitations
-
-- Feed like, comment, and share controls are visual placeholders and do not persist actions.
-- Reports are stored for manual review in Supabase; there is no in-app moderator queue or notification.
-- The pitch builder uses a fixed text template, not an AI service.
-- Tailwind is loaded from its CDN, which is suitable for prototyping but not recommended for a production build.
-- No automated test or build scripts are configured yet.
+- Posts in the journey feed are readable by anyone with the anon key, including unauthenticated visitors — there is currently no members-only visibility option for posts.
+- New profiles default to public with no opt-out at signup (startups do have a public/private toggle).
+- No admin/moderation dashboard yet — reports and blocks are recorded in the database but need to be reviewed directly in Supabase.
+- No automated backups configured beyond Supabase's own defaults.
+- Limited cross-browser and mobile testing so far.
 
 ## License
 
