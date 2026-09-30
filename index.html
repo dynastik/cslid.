@@ -194,6 +194,7 @@
                     <button onclick="filterDirectory('Fintech')" class="dir-filter px-4 py-2 rounded-xl text-xs font-bold bg-gray-800 text-gray-400 hover:text-white whitespace-nowrap">Fintech</button>
                     <button onclick="filterDirectory('SaaS')" class="dir-filter px-4 py-2 rounded-xl text-xs font-bold bg-gray-800 text-gray-400 hover:text-white whitespace-nowrap">SaaS</button>
                     <button onclick="filterDirectory('Web3')" class="dir-filter px-4 py-2 rounded-xl text-xs font-bold bg-gray-800 text-gray-400 hover:text-white whitespace-nowrap">Web3</button>
+                    <button onclick="filterDirectory('investors')" class="dir-filter px-4 py-2 rounded-xl text-xs font-bold bg-gray-800 text-gray-400 hover:text-white whitespace-nowrap">Investors</button>
                 </div>
             </div>
 
@@ -226,21 +227,6 @@
                     <h1 id="profile-name" class="text-2xl font-bold mt-3">Your profile</h1>
                     <p id="profile-startup" class="text-xs text-indigo-400 font-semibold mt-1">Add your founder profile</p>
                     <p id="profile-bio" class="text-xs text-gray-400 max-w-md mx-auto mt-2">Add a short introduction to your profile.</p>
-
-                    <div class="flex justify-center space-x-6 mt-6 pt-6 border-t border-gray-800">
-                        <div>
-                            <span class="block text-lg font-extrabold text-white">0</span>
-                            <span class="text-[10px] uppercase text-gray-400 font-bold">Matches</span>
-                        </div>
-                        <div>
-                            <span class="block text-lg font-extrabold text-white">0</span>
-                            <span class="text-[10px] uppercase text-gray-400 font-bold">Profile Views</span>
-                        </div>
-                        <div>
-                            <span class="block text-lg font-extrabold text-white">—</span>
-                            <span class="text-[10px] uppercase text-gray-400 font-bold">Target Raise</span>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -253,11 +239,12 @@
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-gray-300 mb-1">Startup Title & Sector</label>
-                        <input id="profile-startup-input" type="text" placeholder="Startup title and sector" class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white">
+                        <input id="profile-startup-input" type="text" placeholder="Startup or Firm (title & sector)" class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white">
                     </div>
                     <button onclick="saveProfile()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition">
                         Save Changes
                     </button>
+                    <button id="edit-startup-btn" onclick="openStartupModal()" class="hidden px-5 py-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 rounded-xl text-xs font-bold transition">Edit my startup</button>
                     <button onclick="window.signOutCurrentUser()" class="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 rounded-xl text-xs font-bold transition">
                         Sign out
                     </button>
@@ -435,7 +422,7 @@
         <div id="public-startup-content"></div>
       </div>
     </div>
-
+    <a href="https://forms.gle/ewBiZNhxzvwF37qGA" target="_blank" rel="noopener" class="fixed bottom-6 left-6 z-40 px-4 py-2 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-lg">Give feedback</a>
     <!-- TOAST NOTIFICATION -->
     <div id="toast" class="fixed bottom-6 right-6 z-[70] transform translate-y-20 opacity-0 transition-all duration-300 glass bg-gray-900/95 border border-indigo-500/30 px-5 py-3 rounded-2xl shadow-2xl flex items-center space-x-3" style="z-index: 9999;">
         <i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
