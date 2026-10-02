@@ -8,7 +8,7 @@ cslid. is a startup launchpad and founder–investor matchmaker. Founders publis
 
 ## Features
 
-- Email/password auth via Supabase Auth (magic-link password reset, session persistence)
+- Email/password and Google auth via Supabase Auth (password-reset email, session persistence)
 - Founder and investor roles
 - Startup profile creation with public/private draft toggle
 - Investor swipe deck (Match Deck) sourced from published startups
@@ -25,7 +25,15 @@ cslid. is a startup launchpad and founder–investor matchmaker. Founders publis
 
 - **Frontend:** static HTML/CSS/JS, hosted on GitHub Pages. No build step.
 - **Backend:** Supabase (Postgres + Auth + Realtime), accessed directly from the browser using the public anon key. All access control is enforced server-side via Postgres Row Level Security (RLS) policies and `security definer` functions — see `supabase-schema.sql`.
-- **Client-side cache:** the app fetches data from Supabase and mirrors a filtered copy into `localStorage` purely so the UI can render instantly and survive refreshes. Supabase remains the source of truth; the cache is refreshed on load, every 15 seconds, and on realtime events.
+- **Client-side cache:** the app fetches data from Supabase and mirrors a filtered copy into `localStorage` purely so the UI can render instantly and survive refreshes. Supabase remains the source of truth; the cache is refreshed on load, every 60 seconds, and on realtime events.
+
+## Supabase and Google auth setup
+
+Set the project's Supabase URL and **anon/publishable key** in `js/supabase.js`. The browser key is public by design; never put a service-role key in this repository.
+
+Enable Google in Supabase under **Authentication → Providers → Google** and configure the OAuth client there. In Google Cloud, allow the Supabase callback URL shown by the provider setup (normally `https://<project-ref>.supabase.co/auth/v1/callback`). Add the deployed app URL, `https://dynastik.github.io/cslid./`, to the Supabase **Authentication → URL Configuration → Redirect URLs** allow list. For local testing, use a local HTTP server and add its exact origin/path to that allow list too.
+
+Google sign-in asks the user to select a founder or investor role. The app saves the first-time user's `cslid_users` and `cslid_profiles` rows after OAuth returns; confirm the schema, RLS insert policies, and the non-destructive migration are applied before testing it.
 
 ## Repository structure
 

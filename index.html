@@ -27,7 +27,7 @@
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Load the Supabase JavaScript library before the custom app scripts. -->
-    <script src="https://jsdelivr.net"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
     <!-- Editorial serif for the brand, practical sans for UI, mono for metadata. -->
     <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="./css/styles.css">
@@ -344,15 +344,20 @@
             </div>
             <div id="auth-signup-fields" class="space-y-4">
                 <input id="auth-name" type="text" placeholder="Your name" class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white">
-                <select id="auth-role" class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white">
+            </div>
+            <label for="auth-role" id="auth-role-label" class="block text-xs text-gray-400">Choose your role</label>
+            <select id="auth-role" class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white">
                 <option value="">Choose your role</option>
                 <option value="founder">Founder</option>
                 <option value="investor">Investor</option>
-                </select>
-            </div>
+            </select>
             <input id="auth-email" type="email" placeholder="Email" class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white">
             <input id="auth-password" type="password" minlength="8" placeholder="Password (at least 8 characters)" class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white">
             <button id="auth-submit" type="button" onclick="window.completeAuth('signup')" class="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-pink-600 text-white font-bold text-sm">Create account</button>
+            <div class="flex items-center gap-3 text-[10px] text-gray-500"><span class="grow border-t border-gray-800"></span><span>OR</span><span class="grow border-t border-gray-800"></span></div>
+            <button id="auth-google" type="button" onclick="window.signInWithGoogle()" class="w-full py-3 rounded-xl bg-white text-gray-900 font-bold text-sm hover:bg-gray-100 transition">
+                <i class="fa-brands fa-google mr-2" aria-hidden="true"></i>Continue with Google
+            </button>
             <button id="auth-forgot" type="button" onclick="window.resetPassword()" class="hidden w-full text-xs text-indigo-400 hover:text-indigo-300">Forgot password?</button>
             <p id="auth-switch" class="text-xs text-gray-500 text-center">Already have an account? <button type="button" onclick="window.setAuthMode('signin')" class="font-bold text-indigo-400 hover:text-indigo-300">Sign in</button></p>
             <p id="auth-note" class="text-[10px] text-gray-500 text-center">Testing account only. Verify your email if Supabase asks you to.</p>

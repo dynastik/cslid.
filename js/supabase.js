@@ -1,14 +1,16 @@
 ﻿// Public values from your Supabase Dashboard (the anon key is designed for browsers; RLS protects data).
 const SUPABASE_URL = "https://tudqrcmdncncoqctfdrj.supabase.co/rest/v1/";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1ZHFyY21kbmNuY29xY3RmZHJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNzc3ODYsImV4cCI6MjEwNTY1Mzc4Nn0.BPcwINWu203NrWqj17-5wwcPqk8all8uhOhwmDr4860";
-const SUPABASE_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== "******" && !SUPABASE_ANON_KEY.includes("your-actual"));
+const SUPABASE_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== "******" && !SUPABASE_ANON_KEY.includes("your-actual") && window.supabase?.createClient);
 window.SUPABASE_CONFIGURED = SUPABASE_CONFIGURED;
-window.lastSupabaseError = '';
+window.lastSupabaseError = SUPABASE_CONFIGURED ? '' : (window.supabase?.createClient
+    ? 'Add the Supabase anon key in js/supabase.js.'
+    : 'The Supabase client library did not load.');
 const SUPABASE_BASE_URL = SUPABASE_URL.replace(/\/rest\/v1\/?$/, "");
 
-const supabaseClient = window.supabase.createClient(SUPABASE_BASE_URL, SUPABASE_ANON_KEY, {
+const supabaseClient = SUPABASE_CONFIGURED ? window.supabase.createClient(SUPABASE_BASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: window.localStorage }
-});
+}) : null;
 
 function recordError(label, error) {
     window.lastSupabaseError = error.message;
@@ -35,7 +37,7 @@ async function fetchFromSupabase(table, opts = {}) {
     if (opts.order) query = query.order(opts.order, { ascending: !!opts.ascending });
     if (opts.limit) query = query.limit(opts.limit);
     const { data, error } = await query;
-    if (error) { console.error(`Supabase ${table} load failed:`, error.message); return null; }
+    if (error) { recordError(`Supabase ${table} load failed`, error); return null; }
     return data || [];
 }
 async function callSupabaseFunction(name, parameters = {}) {
@@ -75,6 +77,7 @@ function onSupabaseAuthStateChange(callback) {
     return () => data.subscription.unsubscribe();
 }
 async function signUpWithPassword(email, password, name, role) {
+    if (!SUPABASE_CONFIGURED) throw new Error(window.lastSupabaseError);
     const { data, error } = await supabaseClient.auth.signUp({
         email, password,
         options: { data: { name, role }, emailRedirectTo: window.location.origin + window.location.pathname }
@@ -83,20 +86,33 @@ async function signUpWithPassword(email, password, name, role) {
     return data;
 }
 async function signInWithPassword(email, password) {
+    if (!SUPABASE_CONFIGURED) throw new Error(window.lastSupabaseError);
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;
 }
+async function signInWithGoogleProvider(redirectTo) {
+    if (!SUPABASE_CONFIGURED) throw new Error(window.lastSupabaseError);
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo }
+    });
+    if (error) throw error;
+    return data;
+}
 async function resetPasswordForEmail(email, redirectTo) {
+    if (!SUPABASE_CONFIGURED) throw new Error(window.lastSupabaseError);
     const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
 }
 async function updatePassword(password) {
+    if (!SUPABASE_CONFIGURED) throw new Error(window.lastSupabaseError);
     const { data, error } = await supabaseClient.auth.updateUser({ password });
     if (error) throw error;
     return data;
 }
 async function signOutUser() {
+    if (!SUPABASE_CONFIGURED) throw new Error(window.lastSupabaseError);
     const { error } = await supabaseClient.auth.signOut();
     if (error) throw error;
 }
@@ -104,5 +120,5 @@ async function signOutUser() {
 Object.assign(window, {
     saveToSupabase, sendMessageToSupabase, fetchFromSupabase, callSupabaseFunction,
     subscribeToSupabaseChanges, getSupabaseUser, getSupabaseSession, onSupabaseAuthStateChange,
-    signUpWithPassword, signInWithPassword, resetPasswordForEmail, updatePassword, signOutUser
+    signUpWithPassword, signInWithPassword, signInWithGoogleProvider, resetPasswordForEmail, updatePassword, signOutUser
 });

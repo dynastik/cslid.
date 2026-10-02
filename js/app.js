@@ -243,18 +243,65 @@ window.goToDirectory = () => { closeLaunchCenter(); switchTab('directory'); };
 
 // ============================ auth & account ============================
 async function getLiveUserForWrite() {
-    if (!window.SUPABASE_CONFIGURED) { showToast('Supabase is not configured.'); return null; }
+    if (!window.SUPABASE_CONFIGURED) { showToast(window.lastSupabaseError || 'Supabase is not configured.'); return null; }
     const authUser = await window.getSupabaseUser();
     if (!authUser) { showToast('Your session has expired. Sign in again before saving.'); return null; }
     return authUser;
 }
-async function resolveAccountRole(authUser, previousUser) {
-    if (previousUser?.id === authUser.id && ['founder', 'investor'].includes(previousUser.role)) return previousUser.role;
-    const accounts = await fetchFromSupabase('cslid_users');
+async function resolveAccountRole(authUser) {
+    const accounts = await fetchFromSupabase('cslid_users', {columns: 'id,role'});
+    if (accounts === null) return '';
     const role = (accounts || []).find(a => a.id === authUser.id)?.role;
     if (role === 'founder' || role === 'investor') return role;
     const metaRole = authUser.user_metadata?.role; // fallback only; the database is the source of truth
     return metaRole === 'founder' || metaRole === 'investor' ? metaRole : '';
+}
+
+function getPendingGoogleAccount() {
+    const pending = getStore('cslid_google_oauth_pending', null);
+    if (!pending || !['founder', 'investor'].includes(pending.role) ||
+        !Number.isFinite(pending.createdAt) || Date.now() - pending.createdAt > 30 * 60 * 1000) {
+        localStorage.removeItem('cslid_google_oauth_pending');
+        return null;
+    }
+    return pending;
+}
+
+async function ensureAccountRows(authUser, requestedRole, requestedName) {
+    const [accounts, profiles] = await Promise.all([
+        fetchFromSupabase('cslid_users', {columns: 'id,name,email,role'}),
+        fetchFromSupabase('cslid_profiles', {columns: 'id,user_id,role,name'})
+    ]);
+    if (accounts === null || profiles === null) {
+        throw new Error(window.lastSupabaseError || 'Could not verify your account. Please try again.');
+    }
+
+    const existingAccount = accounts.find(account => account.id === authUser.id);
+    const existingProfile = profiles.find(profile => profile.user_id === authUser.id);
+    const role = existingAccount?.role === 'founder' || existingAccount?.role === 'investor'
+        ? existingAccount.role
+        : (requestedRole || authUser.user_metadata?.role || '');
+    if (role !== 'founder' && role !== 'investor') return null;
+
+    const name = (existingAccount?.name || requestedName || authUser.user_metadata?.full_name ||
+        authUser.user_metadata?.name || authUser.email?.split('@')[0] || '').trim().slice(0, 120);
+    if (!authUser.email) throw new Error('Your Google account did not provide an email address.');
+
+    if (!existingAccount) {
+        const savedAccount = await saveToSupabase('cslid_users', {
+            id: authUser.id, name: name || 'Member', email: authUser.email, role
+        });
+        if (!savedAccount) throw new Error(window.lastSupabaseError || 'Could not create your account profile.');
+    }
+    if (!existingProfile) {
+        const savedProfile = await saveToSupabase('cslid_profiles', {
+            id: authUser.id, user_id: authUser.id, role, name: name || 'Member', is_public: true
+        });
+        if (!savedProfile) throw new Error(window.lastSupabaseError || 'Could not create your public profile.');
+    }
+
+    localStorage.removeItem('cslid_google_oauth_pending');
+    return {role, name: name || 'Member'};
 }
 
 window.setAuthMode = function(mode) {
@@ -264,7 +311,11 @@ window.setAuthMode = function(mode) {
     document.getElementById('auth-description').innerText = isSignIn ? 'Use your email and password to continue.'
         : (isReset ? 'Choose a new password for your account.' : 'Create a testing account with your role and email.');
     document.getElementById('auth-signup-fields').classList.toggle('hidden', isSignIn || isReset);
+    document.getElementById('auth-role').classList.toggle('hidden', isReset);
+    document.getElementById('auth-role-label').classList.toggle('hidden', isReset);
+    document.getElementById('auth-role-label').innerText = isSignIn ? 'Role (only used for new accounts)' : 'Choose your role';
     document.getElementById('auth-email').classList.toggle('hidden', isReset);
+    document.getElementById('auth-google').classList.toggle('hidden', isReset);
     document.getElementById('auth-submit').innerText = isReset ? 'Update password' : (isSignIn ? 'Sign in' : 'Create account');
     document.getElementById('auth-submit').onclick = () => window.completeAuth(isReset ? 'reset' : (isSignIn ? 'signin' : 'signup'));
     document.getElementById('auth-forgot').classList.toggle('hidden', !isSignIn);
@@ -284,6 +335,20 @@ window.resetPassword = async function() {
     } catch (error) { showToast(error.message || 'Could not send password reset email.'); }
 };
 
+window.signInWithGoogle = async function() {
+    const role = document.getElementById('auth-role')?.value || '';
+    if (role !== 'founder' && role !== 'investor') return showToast('Choose a role before continuing with Google.');
+    if (!window.SUPABASE_CONFIGURED) return showToast(window.lastSupabaseError || 'Supabase is not configured.');
+    const name = document.getElementById('auth-name')?.value.trim() || '';
+    try {
+        setStore('cslid_google_oauth_pending', {role, name, createdAt: Date.now()});
+        await window.signInWithGoogleProvider(window.location.origin + window.location.pathname);
+    } catch (error) {
+        localStorage.removeItem('cslid_google_oauth_pending');
+        showToast(error.message || 'Could not continue with Google.');
+    }
+};
+
 async function completeAuth(mode = 'signup') {
     const name = document.getElementById('auth-name')?.value.trim() || '';
     const role = document.getElementById('auth-role')?.value || '';
@@ -293,7 +358,7 @@ async function completeAuth(mode = 'signup') {
         return showToast(mode === 'signup' ? 'Enter your name, role, email and password.' : 'Enter your email and password.');
     }
     if (password.length < 8) return showToast('Password must be at least 8 characters.');
-    if (!window.SUPABASE_CONFIGURED) return showToast('Supabase is not configured.');
+    if (!window.SUPABASE_CONFIGURED) return showToast(window.lastSupabaseError || 'Supabase is not configured.');
     try {
         if (mode === 'reset') {
             await window.updatePassword(password);
@@ -306,11 +371,10 @@ async function completeAuth(mode = 'signup') {
         if (!result.user || !result.session) return showToast('Check your email to confirm your account, then sign in.');
         const liveUser = await getLiveUserForWrite();
         if (!liveUser || liveUser.id !== result.user.id) return showToast('Your sign-in session changed. Please sign in again.');
-        // The users/profiles rows are created by a database trigger on signup.
-        const accountRole = await resolveAccountRole(liveUser, {});
-        if (!accountRole) return showToast('Your account has no role yet. Sign out and create a new account with a role.');
-        const displayName = name || liveUser.user_metadata?.name || email.split('@')[0];
-        setStore('cslid_user', {id: liveUser.id, name: displayName, email: liveUser.email, role: accountRole});
+        const pendingGoogle = getPendingGoogleAccount();
+        const account = await ensureAccountRows(liveUser, pendingGoogle?.role || role, pendingGoogle?.name || name || email.split('@')[0]);
+        if (!account) return showToast('Your account has no role yet. Choose a role and continue with Google.');
+        setStore('cslid_user', {id: liveUser.id, name: account.name, email: liveUser.email, role: account.role});
         closeModal('auth-modal');
         updateUserUI();
         await hydrateFromSupabase();
@@ -365,7 +429,7 @@ async function saveProfile() {
     const profile = {name: inputs[0]?.value || '', startup: inputs[1]?.value || ''};
     const authUser = await getLiveUserForWrite();
     if (!authUser) return;
-    const accountRole = await resolveAccountRole(authUser, me());
+    const accountRole = await resolveAccountRole(authUser);
     if (!accountRole) return showToast('Could not verify your account role. Please sign in again.');
     const saved = await saveToSupabase('cslid_profiles', {id: authUser.id, user_id: authUser.id, role: accountRole, name: profile.name, startup: profile.startup});
     if (window.SUPABASE_CONFIGURED && !saved) return showToast('Could not save your profile. Please try again.');
@@ -781,39 +845,71 @@ function startRealtimeUpdates() {
 // ============================ init ============================
 window.onload = async function() {
     window.setAuthMode('signup');
+    window.onSupabaseAuthStateChange((event, authUser) => {
+        // Never call Supabase directly inside this callback (can deadlock); defer.
+        setTimeout(async () => {
+            if (event === 'PASSWORD_RECOVERY') { window.setAuthMode('reset'); openModal('auth-modal'); return; }
+            if (authUser && ['SIGNED_IN', 'USER_UPDATED'].includes(event)) {
+                const previous = me();
+                try {
+                    const pending = getPendingGoogleAccount();
+                    const account = await ensureAccountRows(authUser, pending?.role, pending?.name);
+                    if (!account) {
+                        localStorage.removeItem('cslid_user');
+                        window.setAuthMode('signup');
+                        openModal('auth-modal');
+                        showToast('Choose a role and continue with Google to finish creating your account.');
+                        return;
+                    }
+                    setStore('cslid_user', {id: authUser.id, name: account.name, email: authUser.email, role: account.role});
+                    updateUserUI();
+                    closeModal('auth-modal');
+                    await hydrateFromSupabase();
+                    startRealtimeUpdates();
+                    if (previous.id !== authUser.id) window.openRoleHome();
+                } catch (error) {
+                    console.error('Could not finish signing in:', error.message);
+                    window.setAuthMode('signup');
+                    openModal('auth-modal');
+                    showToast(error.message || 'Could not finish signing in. Please try again.');
+                }
+            } else if (event === 'SIGNED_OUT') {
+                if (unsubscribeFromRealtime) { unsubscribeFromRealtime(); unsubscribeFromRealtime = null; }
+                clearLocalAccountData();
+                updateUserUI();
+                openModal('auth-modal');
+            }
+        }, 0);
+    });
+
     if (window.SUPABASE_CONFIGURED) {
         const authUser = (await window.getSupabaseSession())?.user || null;
         if (authUser) {
-            const role = await resolveAccountRole(authUser, me());
-            setStore('cslid_user', {id: authUser.id, name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User', email: authUser.email, role});
+            try {
+                const pending = getPendingGoogleAccount();
+                const account = await ensureAccountRows(authUser, pending?.role, pending?.name);
+                if (account) {
+                    setStore('cslid_user', {id: authUser.id, name: account.name, email: authUser.email, role: account.role});
+                } else {
+                    localStorage.removeItem('cslid_user');
+                    showToast('Choose a role and continue with Google to finish creating your account.');
+                }
+            } catch (error) {
+                localStorage.removeItem('cslid_user');
+                console.error('Could not restore your account:', error.message);
+                showToast(error.message || 'Could not restore your account. Please try again.');
+            }
         } else clearLocalAccountData();
     }
     await hydrateFromSupabase();
     if (getStore('cslid_user', null)) startRealtimeUpdates();
     refreshMatchProfiles(); renderFeed(); filterDirectory(); updateUserUI();
     if (getStore('cslid_user', null)) window.openRoleHome();
-    else setTimeout(() => openModal('auth-modal'), 250);
+    else setTimeout(() => {
+        openModal('auth-modal');
+        if (!window.SUPABASE_CONFIGURED) showToast(window.lastSupabaseError || 'Supabase is not configured.');
+    }, 250);
 
-    window.onSupabaseAuthStateChange((event, authUser) => {
-        // Never call Supabase directly inside this callback (can deadlock); defer.
-        setTimeout(async () => {
-            if (event === 'PASSWORD_RECOVERY') { window.setAuthMode('reset'); openModal('auth-modal'); return; }
-            if (authUser) {
-                const previous = me();
-                const role = await resolveAccountRole(authUser, previous);
-                setStore('cslid_user', {id: authUser.id, name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User', email: authUser.email, role});
-                updateUserUI();
-                closeModal('auth-modal');
-                await hydrateFromSupabase();
-                startRealtimeUpdates();
-                if (previous.id !== authUser.id) window.openRoleHome();
-            } else if (event === 'SIGNED_OUT') {
-                if (unsubscribeFromRealtime) { unsubscribeFromRealtime(); unsubscribeFromRealtime = null; }
-                clearLocalAccountData();
-                updateUserUI();
-            }
-        }, 0);
-    });
     document.getElementById('message-input')?.addEventListener('keydown', e => {
         if (e.key === 'Enter') { e.preventDefault(); window.sendMessage(); }
     });
