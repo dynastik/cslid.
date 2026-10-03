@@ -38,25 +38,6 @@ Google sign-in asks the user to select a founder or investor role. The app saves
 
 To change Google's “Choose an account to continue to tudq…supabase.co” label, edit the OAuth app branding in **Google Cloud Console → Google Auth Platform → Branding** (older console: **APIs & Services → OAuth consent screen**). Set the app name to `cslid.`, add the logo, support email, and the verified domain you control. The Supabase callback remains the authorized redirect URI; changing the branding does not change the callback. A custom Supabase Auth domain is another option if your Supabase plan supports it, but requires updating the provider callback and redirect allow-list configuration too.
 
-### Live beta checklist
-
-Before inviting testers:
-
-1. After non-destructive migration 001 is applied, run [`supabase-beta-hardening.sql`](./supabase-beta-hardening.sql) in the Supabase SQL Editor. It can be re-run safely and closes the founder-role write gap for startup updates/deletes and ties profile roles to account roles. Never run [`supabase-schema.sql`](./supabase-schema.sql) on the live project; it deletes app tables and all Auth users.
-2. In **Supabase → Authentication → URL Configuration**, set the Site URL to `https://dynastik.github.io/cslid./` and add that exact URL under Redirect URLs. Add separate exact URLs for any preview or local test origins you use.
-3. In **Supabase → Authentication → Providers → Google**, confirm Google is enabled and the OAuth client ID/secret are present. In Google Cloud, add the Supabase callback URL shown on that provider page as an authorized redirect URI; it is the Supabase callback, not the GitHub Pages URL.
-4. Confirm the app uses the Supabase project URL and browser anon/publishable key in `js/supabase.js`. Never use a service-role/secret key in frontend code or GitHub Pages.
-5. Confirm RLS is enabled on every `cslid_*` table, Realtime includes messages/connections/matches, and the policies/RPC grants from migration 001 are present. Keep the anon role unable to call account, report, block, connection, or messaging RPCs.
-6. Test with separate founder and investor accounts: email verification and sign-in, Google sign-in, role persistence, private startup draft, published startup discovery, connection accept/reject/retry, messaging only after acceptance, block/report, export, and account deletion. Use test data and do not validate deletion on a real account.
-7. To designate a moderator after that person has signed up, run this in the SQL Editor with their account email:
-   ```sql
-   insert into public.cslid_moderators (user_id)
-   select id from auth.users where lower(email) = lower('moderator@example.com')
-   on conflict (user_id) do nothing;
-   ```
-   Remove access by deleting that user's row from `public.cslid_moderators`. The Reports tab is visible only to assigned moderator accounts; report content and decisions are protected by RLS and server-side RPC checks. The queue supports profile and post reports, marking reports reviewed, dismissing reports, and recording a review note. New reports update an open moderator queue in realtime. Start with a human reviewer and do not auto-ban based solely on report counts. For email/Slack alerts, connect a Supabase Database Webhook or Edge Function to a notification provider and store credentials as Supabase secrets, never in the frontend.
-8. Decide who checks the queue and how quickly, who covers absences, and how users can contact you. Configure an appropriate backup/export schedule and production email delivery in Supabase before inviting the public.
-
 ## Repository structure
 
 ```
