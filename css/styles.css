@@ -319,7 +319,6 @@
         #tab-directory .flex.items-center.space-x-2::-webkit-scrollbar { display: none; }
         #tab-connections > div:first-child { flex-wrap: wrap; }
         #tab-connections > div:first-child > div { min-width: 0; }
-        #connections-refresh-button { margin-left: auto; }
         #tab-profile .flex.justify-center.space-x-6 { gap: 1rem; justify-content: space-between; }
         [id$="-modal"] > div, #launch-center > div { width: 100%; max-height: calc(100dvh - 1rem); border-radius: 18px !important; padding: 1.1rem !important; }
         #launch-center > div { clip-path: inset(0 round 18px); }

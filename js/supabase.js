@@ -69,7 +69,7 @@ async function callSupabaseFunction(name, parameters = {}) {
 function subscribeToSupabaseChanges(callback) {
     if (!SUPABASE_CONFIGURED) return () => {};
     const channel = supabaseClient.channel('cslid-live-updates');
-    ['cslid_messages', 'cslid_connections', 'cslid_matches'].forEach(table =>
+    ['cslid_messages', 'cslid_connections', 'cslid_matches', 'cslid_reports'].forEach(table =>
         channel.on('postgres_changes', { event: '*', schema: 'public', table }, callback));
     channel.subscribe(status => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.error(`Supabase realtime ${status.toLowerCase()}.`);

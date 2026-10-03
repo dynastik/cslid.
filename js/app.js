@@ -45,15 +45,19 @@ window.toggleTheme = () => applyTheme(document.documentElement.dataset.theme ===
 applyTheme(localStorage.getItem('cslid_theme') || 'light');
 
 // ============================ state ============================
-let currentProfileIndex = 0, matchProfiles = [], matchedProfile = null, swiping = false;
+let currentProfileIndex = 0, matchProfiles = [], swiping = false;
 let activeMessageRecipientId = '', refreshInProgress = false, unsubscribeFromRealtime = null, hydrateTimer = null;
-let directoryFilter = 'all', directoryStartups = [];
+let directoryFilter = 'all', directoryStartups = [], currentUserIsModerator = false, authMode = 'signup';
 const feedPosts = [];
 
 function getRegisteredStartups() { return getStore('cslid_startups', []); }
 
 // ============================ tabs ============================
 function switchTab(tabId) {
+    if (tabId === 'moderation' && !currentUserIsModerator) {
+        showToast('Moderator access is required to review reports.');
+        return;
+    }
     if (tabId === 'match' && me().role === 'founder') {
         showToast('Match Deck is available to investor accounts.');
         tabId = 'connections';
@@ -66,6 +70,7 @@ function switchTab(tabId) {
     const active = document.getElementById(`nav-btn-${tabId}`);
     if (active) active.className = "nav-btn px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center space-x-2 bg-indigo-600 text-white shadow-md shadow-indigo-600/30";
     if (tabId === 'connections') renderConnections();
+    if (tabId === 'moderation') window.loadModerationQueue();
 }
 window.switchTab = switchTab;
 window.openRoleHome = () => switchTab(me().role === 'founder' ? 'connections' : 'match');
@@ -133,17 +138,12 @@ function handleSwipe(action) {
 }
 
 function openMatchModal(profile) {
-    matchedProfile = profile || null;
     document.getElementById('match-modal-text').innerText = profile
         ? `Your connection request to ${profile.name} was sent. You can message them after they accept.`
         : 'Connection request sent.';
     openModal('match-modal');
 }
 function closeMatchModal() { closeModal('match-modal'); }
-function openMatchedContact() {
-    if (matchedProfile?.contactUrl) window.location.href = matchedProfile.contactUrl;
-    else showToast('This startup has not provided a contact page.');
-}
 
 // ============================ feed ============================
 function renderFeed() {
@@ -160,6 +160,7 @@ function renderFeed() {
             <div class="flex flex-wrap gap-1.5">
                 ${(post.tags || []).map(t => `<span class="text-[10px] px-2 py-0.5 rounded bg-gray-800 text-gray-400">#${escapeHtml(t)}</span>`).join('')}
             </div>
+            ${me().id && post.userId !== me().id ? `<div class="border-t border-gray-800 pt-3 text-right"><button onclick="window.reportPost('${escapeHtml(post.id)}')" class="text-[10px] text-gray-500 hover:text-rose-400"><i class="fa-solid fa-flag mr-1"></i>Report post</button></div>` : ''}
         </div>`).join('')
         : '<div class="vl-empty">No updates yet. Founders can share progress with "Post Update".</div>';
 }
@@ -196,7 +197,7 @@ function filterDirectory(f) {
     const rel = uid => {
         const r = getConnectionBetween(user.id, uid);
         if (r?.status === 'accepted') return 'Connected';
-        if (r?.status === 'requested') return r.requester_id === user.id ? 'Pending' : 'Respond';
+        if (r?.status === 'requested') return r.requester_id === user.id ? 'Pending' : 'View request';
         return 'Connect';
     };
     const sectorRe = s => new RegExp('\\b' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
@@ -207,7 +208,10 @@ function filterDirectory(f) {
     const actions = (uid, label) => `
         <div class="flex gap-2">
             ${label === 'Connected' ? `<button onclick="openConnectionMessage('${escapeHtml(uid)}')" class="px-3 py-1.5 rounded-xl bg-gray-800 text-gray-200 font-bold"><i class="fa-regular fa-message mr-1"></i>Message</button>` : ''}
-            <button onclick="connectPersistently('${escapeHtml(uid)}')" class="connection-action px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition">${label}</button>
+            ${label === 'Connect' ? `<button onclick="connectPersistently('${escapeHtml(uid)}')" class="connection-action px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition">Connect</button>` : ''}
+            ${label === 'View request' ? `<button onclick="switchTab('connections')" class="px-3 py-1.5 bg-gray-800 text-gray-200 rounded-xl font-bold">View request</button>` : ''}
+            ${label === 'Pending' ? '<span class="px-3 py-1.5 bg-gray-800 text-gray-400 rounded-xl font-bold">Pending</span>' : ''}
+            ${me().id && uid !== me().id ? `<button onclick="window.reportUser('${escapeHtml(uid)}')" aria-label="Report profile" title="Report profile" class="px-2 py-1.5 rounded-xl bg-gray-800 text-gray-400 hover:text-rose-400"><i class="fa-solid fa-flag"></i></button>` : ''}
         </div>`;
     const startupCard = s => `
         <div class="glass p-5 rounded-3xl border border-gray-800 space-y-4">
@@ -259,7 +263,7 @@ async function resolveAccountRole(authUser) {
 
 function getPendingGoogleAccount() {
     const pending = getStore('cslid_google_oauth_pending', null);
-    if (!pending || !['founder', 'investor'].includes(pending.role) ||
+    if (!pending || (pending.role && !['founder', 'investor'].includes(pending.role)) ||
         !Number.isFinite(pending.createdAt) || Date.now() - pending.createdAt > 30 * 60 * 1000) {
         localStorage.removeItem('cslid_google_oauth_pending');
         return null;
@@ -306,6 +310,7 @@ async function ensureAccountRows(authUser, requestedRole, requestedName) {
 
 window.setAuthMode = function(mode) {
     const isSignIn = mode === 'signin', isReset = mode === 'reset';
+    authMode = isReset ? 'reset' : (isSignIn ? 'signin' : 'signup');
     const link = (m, text) => `<button type="button" onclick="window.setAuthMode('${m}')" class="font-bold text-indigo-400 hover:text-indigo-300">${text}</button>`;
     document.getElementById('auth-title').innerText = isReset ? 'Set a new password' : (isSignIn ? 'Sign in to cslid.' : 'Create your cslid. account');
     document.getElementById('auth-description').innerText = isSignIn ? 'Use your email and password to continue.'
@@ -322,7 +327,8 @@ window.setAuthMode = function(mode) {
     document.getElementById('auth-switch').innerHTML = isReset ? `Return to ${link('signin', 'sign in')}`
         : (isSignIn ? `Need an account? ${link('signup', 'Create one')}` : `Already have an account? ${link('signin', 'Sign in')}`);
     document.getElementById('auth-note').innerText = isReset ? 'Use at least 8 characters.'
-        : (isSignIn ? 'Use the email address you registered with.' : 'Testing account only. Verify your email if Supabase asks you to.');
+        : (isSignIn ? 'Google accounts can continue with Google. To use a password, request a reset email to set one first.'
+            : 'Google accounts sign in with Google; you can set a password later using the reset email.');
     document.getElementById('auth-password').placeholder = isSignIn ? 'Password' : 'Password (at least 8 characters)';
 };
 
@@ -337,7 +343,7 @@ window.resetPassword = async function() {
 
 window.signInWithGoogle = async function() {
     const role = document.getElementById('auth-role')?.value || '';
-    if (role !== 'founder' && role !== 'investor') return showToast('Choose a role before continuing with Google.');
+    if (authMode === 'signup' && role !== 'founder' && role !== 'investor') return showToast('Choose a role before creating your account with Google.');
     if (!window.SUPABASE_CONFIGURED) return showToast(window.lastSupabaseError || 'Supabase is not configured.');
     const name = document.getElementById('auth-name')?.value.trim() || '';
     try {
@@ -391,6 +397,7 @@ window.completeAuth = completeAuth;
 window.signOutCurrentUser = async function() {
     try {
         await window.signOutUser();
+        currentUserIsModerator = false;
         clearLocalAccountData();
         feedPosts.length = 0; directoryStartups = []; matchProfiles = [];
         updateUserUI(); renderFeed(); filterDirectory(); refreshMatchProfiles(); renderConnections();
@@ -403,6 +410,11 @@ function updateUserUI() {
     const user = getStore('cslid_user', null);
     const matchNav = document.getElementById('nav-btn-match');
     const launchButton = document.getElementById('launch-center-nav');
+    const moderationNav = document.getElementById('nav-btn-moderation');
+    if (moderationNav) {
+        moderationNav.hidden = !currentUserIsModerator;
+        moderationNav.style.display = currentUserIsModerator ? '' : 'none';
+    }
     if (!user) {
         if (matchNav) matchNav.style.display = '';
         if (launchButton) launchButton.style.display = '';
@@ -455,6 +467,7 @@ window.deleteMyAccount = async function() {
     if (!me().id) return showToast('Sign in before deleting your account.');
     if (!window.confirm('Delete your account and all cslid. data permanently? This cannot be undone.')) return;
     if (await window.callSupabaseFunction('delete_my_account') === null) return showToast('Could not delete your account. Please try again.');
+    currentUserIsModerator = false;
     clearLocalAccountData();
     try { await window.signOutUser(); } catch (e) { /* session already gone */ }
     window.location.reload();
@@ -595,13 +608,22 @@ window.renderConnections = function() {
         }), 'Accepted connections will appear here.');
 };
 
-window.refreshConnections = async function() {
-    if (!getStore('cslid_user', null)) return showToast('Sign in to refresh your connections.');
-    const button = document.getElementById('connections-refresh-button'), label = button?.querySelector('span');
+window.refreshAppData = async function() {
+    if (!me().id) return showToast('Sign in to refresh your data.');
+    if (!window.SUPABASE_CONFIGURED) return showToast(window.lastSupabaseError || 'Supabase is not configured.');
+    const button = document.getElementById('refresh-data-button'), label = button?.querySelector('span');
     if (button) button.disabled = true;
-    if (label) label.textContent = 'Refreshing...';
-    try { await hydrateFromSupabase(); renderConnections(); showToast('Connections refreshed.'); }
-    finally { if (button) button.disabled = false; if (label) label.textContent = 'Refresh connections'; }
+    if (label) label.textContent = 'Refreshing';
+    try {
+        const refreshed = await hydrateFromSupabase();
+        if (refreshed && currentUserIsModerator && !document.getElementById('tab-moderation').classList.contains('hidden')) {
+            await window.loadModerationQueue();
+        }
+        showToast(refreshed ? 'All app data refreshed.' : (window.lastSupabaseError || 'Data could not be refreshed. Try again.'));
+    } finally {
+        if (button) button.disabled = false;
+        if (label) label.textContent = 'Refresh';
+    }
 };
 
 // ============================ messages ============================
@@ -662,13 +684,88 @@ window.blockCurrentUser = async function() {
     renderConnections();
     showToast('User blocked.');
 };
+window.reportUser = async function(reportedId) {
+    if (!me().id) return showToast('Sign in before submitting a report.');
+    if (!reportedId || reportedId === me().id) return showToast('This profile cannot be reported.');
+    const reason = window.prompt('Why are you reporting this profile?');
+    if (!reason?.trim()) return;
+    if (reason.trim().length > 1000) return showToast('Keep the report reason under 1000 characters.');
+    if (await window.callSupabaseFunction('report_user', {p_reported_id: reportedId, p_reason: reason.trim()}) === null) return showToast(window.lastSupabaseError || 'Could not submit the report. Please try again.');
+    showToast('Report submitted. Thank you.');
+};
 window.reportCurrentUser = async function() {
     const recipientId = document.getElementById('message-modal')?.dataset.recipientId;
-    if (!recipientId) return showToast('This user cannot be reported.');
-    const reason = window.prompt('Why are you reporting this user?');
+    return window.reportUser(recipientId);
+};
+window.reportPost = async function(postId) {
+    if (!me().id) return showToast('Sign in before submitting a report.');
+    if (!postId) return showToast('This post cannot be reported.');
+    const reason = window.prompt('Why are you reporting this post?');
     if (!reason?.trim()) return;
-    if (await window.callSupabaseFunction('report_user', {p_reported_id: recipientId, p_reason: reason.trim()}) === null) return showToast('Could not submit the report. Please try again.');
-    showToast('Report submitted. Thank you.');
+    if (reason.trim().length > 1000) return showToast('Keep the report reason under 1000 characters.');
+    if (await window.callSupabaseFunction('report_post', {p_post_id: postId, p_reason: reason.trim()}) === null) {
+        return showToast(window.lastSupabaseError || 'Could not submit the report. Please try again.');
+    }
+    showToast('Post report submitted. Thank you.');
+};
+
+async function refreshModeratorAccess() {
+    currentUserIsModerator = false;
+    if (me().id && window.SUPABASE_CONFIGURED) {
+        const result = await window.callSupabaseFunction('is_cslid_moderator');
+        currentUserIsModerator = result === true;
+    }
+    updateUserUI();
+    return currentUserIsModerator;
+}
+
+window.loadModerationQueue = async function() {
+    const container = document.getElementById('moderation-queue');
+    if (!container) return;
+    if (!currentUserIsModerator) {
+        container.innerHTML = '<div class="vl-empty">Moderator access is required to view reports.</div>';
+        return;
+    }
+    container.innerHTML = '<div class="vl-empty">Loading reports…</div>';
+    const includeClosed = document.getElementById('moderation-include-closed')?.checked || false;
+    const reports = await window.callSupabaseFunction('moderation_queue', {p_include_closed: includeClosed});
+    if (!Array.isArray(reports)) {
+        container.innerHTML = '<div class="vl-empty">Could not load reports. Refresh and try again.</div>';
+        return;
+    }
+    if (!reports.length) {
+        container.innerHTML = '<div class="vl-empty">No reports to review.</div>';
+        return;
+    }
+    container.innerHTML = reports.map(report => `
+        <article class="glass p-5 rounded-3xl border border-gray-800 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div><p class="text-sm font-bold">${escapeHtml(report.reported_post_id ? 'Post report' : 'Profile report')}</p>
+                    <p class="text-[10px] text-gray-500">Reported ${escapeHtml(report.reported_name || String(report.reported_id).slice(0, 8))} · ${escapeHtml(formatWhen(report.created_at))}</p></div>
+                <span class="vl-pill">${escapeHtml(report.status)}</span>
+            </div>
+            <p class="text-sm text-gray-300"><strong>Reason:</strong> ${escapeHtml(report.reason)}</p>
+            ${report.post_content ? `<blockquote class="border-l-2 border-indigo-500 pl-3 text-xs text-gray-400">${escapeHtml(report.post_content)}</blockquote>` : ''}
+            ${report.resolution_note ? `<p class="text-xs text-gray-500"><strong>Review note:</strong> ${escapeHtml(report.resolution_note)}</p>` : ''}
+            ${report.status === 'open' ? `<div class="flex flex-wrap gap-2 pt-2">
+                <button onclick="window.reviewReport('${escapeHtml(report.id)}','reviewed')" class="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold">Mark reviewed</button>
+                <button onclick="window.reviewReport('${escapeHtml(report.id)}','dismissed')" class="px-3 py-2 rounded-lg bg-gray-800 text-gray-200 text-xs font-bold">Dismiss</button>
+            </div>` : ''}
+        </article>`).join('');
+};
+window.reviewReport = async function(reportId, status) {
+    if (!currentUserIsModerator || !reportId || !['reviewed', 'dismissed'].includes(status)) {
+        return showToast('Moderator access is required to update reports.');
+    }
+    const note = window.prompt('Optional moderation note (max 1000 characters):');
+    if (note === null) return;
+    if (note.length > 1000) return showToast('Keep the moderation note under 1000 characters.');
+    const saved = await window.callSupabaseFunction('review_report', {
+        p_report_id: reportId, p_status: status, p_note: note.trim() || null
+    });
+    if (saved !== true) return showToast(window.lastSupabaseError || 'Could not update this report.');
+    await window.loadModerationQueue();
+    showToast(status === 'reviewed' ? 'Report marked reviewed.' : 'Report dismissed.');
 };
 
 // ============================ launch center ============================
@@ -782,9 +879,9 @@ window.markPitchReady = async function() {
 
 // ============================ data sync ============================
 async function hydrateFromSupabase() {
-    if (!window.SUPABASE_CONFIGURED || refreshInProgress) return;
+    if (!window.SUPABASE_CONFIGURED || refreshInProgress) return false;
     const userId = me().id;
-    if (!userId) return;
+    if (!userId) return false;
     refreshInProgress = true;
     try {
         const [posts, startups, connections, matches, messages, tasks, profiles] = await Promise.all([
@@ -796,7 +893,7 @@ async function hydrateFromSupabase() {
             fetchFromSupabase('cslid_tasks'),
             fetchFromSupabase('cslid_profiles')
         ]);
-        if ([posts, startups, connections, matches, messages, tasks, profiles].some(x => x === null)) return; // keep cache on errors
+        if ([posts, startups, connections, matches, messages, tasks, profiles].some(x => x === null)) return false; // keep cache on errors
 
         setStore('cslid_public_profiles', profiles);
         const ownProfile = profiles.find(i => i.user_id === userId);
@@ -831,6 +928,7 @@ async function hydrateFromSupabase() {
         renderFeed(); filterDirectory(); refreshMatchProfiles();
         if (!document.getElementById('tab-connections').classList.contains('hidden')) renderConnections();
         if (activeMessageRecipientId && !document.getElementById('message-modal').classList.contains('hidden')) renderMessages(activeMessageRecipientId);
+        return true;
     } finally { refreshInProgress = false; }
 }
 
@@ -838,7 +936,12 @@ function startRealtimeUpdates() {
     if (unsubscribeFromRealtime) unsubscribeFromRealtime();
     unsubscribeFromRealtime = window.subscribeToSupabaseChanges(() => {
         clearTimeout(hydrateTimer);
-        hydrateTimer = setTimeout(hydrateFromSupabase, 500);
+        hydrateTimer = setTimeout(async () => {
+            await hydrateFromSupabase();
+            if (currentUserIsModerator && !document.getElementById('tab-moderation').classList.contains('hidden')) {
+                await window.loadModerationQueue();
+            }
+        }, 500);
     });
 }
 
@@ -863,6 +966,7 @@ window.onload = async function() {
                     }
                     setStore('cslid_user', {id: authUser.id, name: account.name, email: authUser.email, role: account.role});
                     updateUserUI();
+                    await refreshModeratorAccess();
                     closeModal('auth-modal');
                     await hydrateFromSupabase();
                     startRealtimeUpdates();
@@ -875,6 +979,7 @@ window.onload = async function() {
                 }
             } else if (event === 'SIGNED_OUT') {
                 if (unsubscribeFromRealtime) { unsubscribeFromRealtime(); unsubscribeFromRealtime = null; }
+                currentUserIsModerator = false;
                 clearLocalAccountData();
                 updateUserUI();
                 openModal('auth-modal');
@@ -890,6 +995,7 @@ window.onload = async function() {
                 const account = await ensureAccountRows(authUser, pending?.role, pending?.name);
                 if (account) {
                     setStore('cslid_user', {id: authUser.id, name: account.name, email: authUser.email, role: account.role});
+                    await refreshModeratorAccess();
                 } else {
                     localStorage.removeItem('cslid_user');
                     showToast('Choose a role and continue with Google to finish creating your account.');
@@ -902,6 +1008,7 @@ window.onload = async function() {
         } else clearLocalAccountData();
     }
     await hydrateFromSupabase();
+    if (getStore('cslid_user', null)) await refreshModeratorAccess();
     if (getStore('cslid_user', null)) startRealtimeUpdates();
     refreshMatchProfiles(); renderFeed(); filterDirectory(); updateUserUI();
     if (getStore('cslid_user', null)) window.openRoleHome();
