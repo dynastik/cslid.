@@ -35,6 +35,18 @@ Enable Google in Supabase under **Authentication → Providers → Google** and 
 
 Google sign-in asks the user to select a founder or investor role. The app saves the first-time user's `cslid_users` and `cslid_profiles` rows after OAuth returns; confirm the schema, RLS insert policies, and the non-destructive migration are applied before testing it.
 
+### Live beta checklist
+
+Before inviting testers:
+
+1. After non-destructive migration 001 is applied, run [`supabase-beta-hardening.sql`](./supabase-beta-hardening.sql) in the Supabase SQL Editor. It can be re-run safely and closes the founder-role write gap for startup updates/deletes and ties profile roles to account roles. Never run [`supabase-schema.sql`](./supabase-schema.sql) on the live project; it deletes app tables and all Auth users.
+2. In **Supabase → Authentication → URL Configuration**, set the Site URL to `https://dynastik.github.io/cslid./` and add that exact URL under Redirect URLs. Add separate exact URLs for any preview or local test origins you use.
+3. In **Supabase → Authentication → Providers → Google**, confirm Google is enabled and the OAuth client ID/secret are present. In Google Cloud, add the Supabase callback URL shown on that provider page as an authorized redirect URI; it is the Supabase callback, not the GitHub Pages URL.
+4. Confirm the app uses the Supabase project URL and browser anon/publishable key in `js/supabase.js`. Never use a service-role/secret key in frontend code or GitHub Pages.
+5. Confirm RLS is enabled on every `cslid_*` table, Realtime includes messages/connections/matches, and the policies/RPC grants from migration 001 are present. Keep the anon role unable to call account, report, block, connection, or messaging RPCs.
+6. Test with separate founder and investor accounts: email verification and sign-in, Google sign-in, role persistence, private startup draft, published startup discovery, connection accept/reject/retry, messaging only after acceptance, block/report, export, and account deletion. Use test data and do not validate deletion on a real account.
+7. Decide how reports will be reviewed, who responds to abuse, and how users can contact you. Configure an appropriate backup/export schedule and production email delivery in Supabase before inviting the public.
+
 ## Repository structure
 
 ```
@@ -56,7 +68,7 @@ cslid/
 - Posts in the journey feed are readable by anyone with the anon key, including unauthenticated visitors — there is currently no members-only visibility option for posts.
 - New profiles default to public with no opt-out at signup (startups do have a public/private toggle).
 - No admin/moderation dashboard yet — reports and blocks are recorded in the database but need to be reviewed directly in Supabase.
-- No automated backups configured beyond Supabase's own defaults.
+- Supabase backup availability and retention depend on the project plan; confirm the actual schedule and keep an independent export for beta data.
 - Limited cross-browser and mobile testing so far.
 
 ## License

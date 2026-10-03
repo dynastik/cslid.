@@ -643,7 +643,7 @@ window.sendMessage = async function() {
     let saved;
     try { saved = await window.sendMessageToSupabase(recipientId, text); }
     catch (error) { return showToast(`Could not send message: ${error.message || 'Please try again.'}`); }
-    if (window.SUPABASE_CONFIGURED && !saved) return showToast('Could not send the message. Please try again.');
+    if (window.SUPABASE_CONFIGURED && !saved) return showToast(window.lastSupabaseError || 'Could not send the message. Please try again.');
     const all = getStore('cslid_messages', {});
     all[recipientId] = all[recipientId] || [];
     all[recipientId].push({text, me: true, time: saved?.created_at || Date.now()});
@@ -792,7 +792,7 @@ async function hydrateFromSupabase() {
             fetchFromSupabase('cslid_startups'),
             fetchFromSupabase('cslid_connections'),
             fetchFromSupabase('cslid_matches'),
-            fetchFromSupabase('cslid_messages', {order: 'created_at', ascending: true, limit: 1000}),
+            fetchFromSupabase('cslid_messages', {order: 'created_at', ascending: false, limit: 1000}),
             fetchFromSupabase('cslid_tasks'),
             fetchFromSupabase('cslid_profiles')
         ]);
@@ -820,7 +820,7 @@ async function hydrateFromSupabase() {
         setStore('cslid_matches', matches.filter(i => i.user_id === userId || i.matched_user_id === userId).map(i => ({
             id: i.id, userId: i.user_id === userId ? i.matched_user_id : i.user_id, matchedAt: i.matched_at})));
         const threads = {};
-        messages.forEach(m => {
+        messages.reverse().forEach(m => {
             const other = m.sender_id === userId ? m.recipient_id : m.sender_id;
             (threads[other] = threads[other] || []).push({text: m.content, me: m.sender_id === userId, time: m.created_at});
         });

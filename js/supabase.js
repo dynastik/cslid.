@@ -19,32 +19,52 @@ function recordError(label, error) {
 
 async function saveToSupabase(table, row, onConflict) {
     if (!SUPABASE_CONFIGURED) return null;
-    const { data, error } = await supabaseClient.from(table)
-        .upsert(row, onConflict ? { onConflict } : undefined).select().single();
-    if (error) { recordError(`Supabase ${table} save failed`, error); return null; }
-    return data;
+    try {
+        const { data, error } = await supabaseClient.from(table)
+            .upsert(row, onConflict ? { onConflict } : undefined).select().single();
+        if (error) { recordError(`Supabase ${table} save failed`, error); return null; }
+        return data;
+    } catch (error) {
+        recordError(`Supabase ${table} save failed`, error);
+        return null;
+    }
 }
 async function sendMessageToSupabase(recipientId, content) {
     if (!SUPABASE_CONFIGURED) return null;
-    const { data, error } = await supabaseClient.rpc('send_connection_message', { p_recipient_id: recipientId, p_content: content });
-    if (error) { recordError('Supabase message send failed', error); throw error; }
-    return data;
+    try {
+        const { data, error } = await supabaseClient.rpc('send_connection_message', { p_recipient_id: recipientId, p_content: content });
+        if (error) { recordError('Supabase message send failed', error); return null; }
+        return data;
+    } catch (error) {
+        recordError('Supabase message send failed', error);
+        return null;
+    }
 }
 // Returns null on error (not []), so callers keep their cache instead of wiping the UI.
 async function fetchFromSupabase(table, opts = {}) {
     if (!SUPABASE_CONFIGURED) return [];
-    let query = supabaseClient.from(table).select(opts.columns || '*');
-    if (opts.order) query = query.order(opts.order, { ascending: !!opts.ascending });
-    if (opts.limit) query = query.limit(opts.limit);
-    const { data, error } = await query;
-    if (error) { recordError(`Supabase ${table} load failed`, error); return null; }
-    return data || [];
+    try {
+        let query = supabaseClient.from(table).select(opts.columns || '*');
+        if (opts.order) query = query.order(opts.order, { ascending: !!opts.ascending });
+        if (opts.limit) query = query.limit(opts.limit);
+        const { data, error } = await query;
+        if (error) { recordError(`Supabase ${table} load failed`, error); return null; }
+        return data || [];
+    } catch (error) {
+        recordError(`Supabase ${table} load failed`, error);
+        return null;
+    }
 }
 async function callSupabaseFunction(name, parameters = {}) {
     if (!SUPABASE_CONFIGURED) return null;
-    const { data, error } = await supabaseClient.rpc(name, parameters);
-    if (error) { recordError(`Supabase function ${name} failed`, error); return null; }
-    return data;
+    try {
+        const { data, error } = await supabaseClient.rpc(name, parameters);
+        if (error) { recordError(`Supabase function ${name} failed`, error); return null; }
+        return data;
+    } catch (error) {
+        recordError(`Supabase function ${name} failed`, error);
+        return null;
+    }
 }
 function subscribeToSupabaseChanges(callback) {
     if (!SUPABASE_CONFIGURED) return () => {};
@@ -58,18 +78,28 @@ function subscribeToSupabaseChanges(callback) {
 }
 async function getSupabaseUser() {
     if (!SUPABASE_CONFIGURED) return null;
-    const { data, error } = await supabaseClient.auth.getUser();
-    if (error) {
-        if (error.message !== 'Auth session missing!') console.error('Supabase user lookup failed:', error.message);
+    try {
+        const { data, error } = await supabaseClient.auth.getUser();
+        if (error) {
+            if (error.message !== 'Auth session missing!') recordError('Supabase user lookup failed', error);
+            return null;
+        }
+        return data.user || null;
+    } catch (error) {
+        recordError('Supabase user lookup failed', error);
         return null;
     }
-    return data.user || null;
 }
 async function getSupabaseSession() {
     if (!SUPABASE_CONFIGURED) return null;
-    const { data, error } = await supabaseClient.auth.getSession();
-    if (error) { console.error('Supabase session lookup failed:', error.message); return null; }
-    return data.session || null;
+    try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error) { recordError('Supabase session lookup failed', error); return null; }
+        return data.session || null;
+    } catch (error) {
+        recordError('Supabase session lookup failed', error);
+        return null;
+    }
 }
 function onSupabaseAuthStateChange(callback) {
     if (!SUPABASE_CONFIGURED) return () => {};
